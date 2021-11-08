@@ -35,7 +35,6 @@ export default class NetworkServer {
       perMessageDeflate,
     });
     this.wss.on("connection", this.onConnection.bind(this));
-    this.wss.on("message", this.onMessage.bind(this));
     this.wss.on("close", this.onClose.bind(this));
 
     //Closes broken connections (30000ms ping)
@@ -48,18 +47,22 @@ export default class NetworkServer {
       });
     }, 30000);
   }
-  onMessage(message) {
-    console.log("received: %s", message);
-  }
+
   onConnection(ws, req) {
     ws.isAlive = true;
-    ws.on("pong", heartbeat);
+    // ws.on("pong", heartbeat);
     this.sendMessage(ws, "ping");
 
     const ip =
       (req.headers["x-forwarded-for"] as String)?.split(",")[0].trim() ??
       req.socket.remoteAddress;
     this.sendMessage(ws, "getKnownUsersSharingIp", this.knownUsers[ip]);
+    ws.on("message", (message) => {
+      console.log("received: %s", message);
+      if (message == "pong") {
+        heartbeat.bind(ws)();
+      }
+    });
   }
   onClose() {
     clearInterval(this.interval);
