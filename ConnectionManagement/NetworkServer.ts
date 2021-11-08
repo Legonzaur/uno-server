@@ -1,4 +1,4 @@
-import { WebSocketServer } from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 
 function heartbeat() {
   this.isAlive = true;
@@ -27,27 +27,26 @@ const perMessageDeflate = {
 export default class NetworkServer {
   wss: WebSocketServer;
   interval: NodeJS.Timer;
-  constructor(port1: Number = 8081) {
+  knownUsers = { "::ffff:127.0.0.1": ["Legonzaur"] };
+  messageId = 0;
+  constructor(port: number = 8081) {
     this.wss = new WebSocketServer({
-      port: 8081,
+      port,
       perMessageDeflate,
     });
-    this.wss.on("connection", this.onConnection);
-    this.wss.on("message", this.onMessage);
-    this.wss.on("close", this.onClose);
+    this.wss.on("connection", this.onConnection.bind(this));
+    this.wss.on("message", this.onMessage.bind(this));
+    this.wss.on("close", this.onClose.bind(this));
 
     //Closes broken connections (30000ms ping)
-    this.interval = setInterval(
-      function ping() {
-        this.wss.clients.forEach(function each(ws) {
-          if (ws.isAlive === false) return ws.terminate();
+    this.interval = setInterval(() => {
+      this.wss.clients.forEach((ws: any) => {
+        if (ws.isAlive === false) return ws.terminate();
 
-          ws.isAlive = false;
-          ws.ping();
-        });
-      }.bind(this),
-      30000
-    );
+        ws.isAlive = false;
+        this.sendMessage(ws, "ping");
+      });
+    }, 30000);
   }
   onMessage(message) {
     console.log("received: %s", message);
@@ -55,13 +54,17 @@ export default class NetworkServer {
   onConnection(ws, req) {
     ws.isAlive = true;
     ws.on("pong", heartbeat);
+    this.sendMessage(ws, "ping");
 
     const ip =
       (req.headers["x-forwarded-for"] as String)?.split(",")[0].trim() ??
       req.socket.remoteAddress;
-    console.log(ip);
+    this.sendMessage(ws, "getKnownUsersSharingIp", this.knownUsers[ip]);
   }
   onClose() {
     clearInterval(this.interval);
+  }
+  sendMessage(ws: WebSocket, order: String, data: any = null) {
+    ws.send(JSON.stringify({ order, data, id: this.messageId++ }));
   }
 }
