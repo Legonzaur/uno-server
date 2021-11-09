@@ -1,7 +1,14 @@
 import WebSocket, { WebSocketServer } from "ws";
+import Game from "../GameManagement/Game";
 
 function heartbeat() {
   this.isAlive = true;
+}
+
+interface GameMessage {
+  order: string;
+  data: any;
+  id: number;
 }
 
 const perMessageDeflate = {
@@ -25,11 +32,11 @@ const perMessageDeflate = {
 };
 
 export default class NetworkServer {
+  _game: Game;
   wss: WebSocketServer;
   interval: NodeJS.Timer;
-  knownUsers = { "::ffff:127.0.0.1": ["Legonzaur"] };
-  messageId = 0;
-  constructor(port: number = 8081) {
+  constructor(port: number = 8081, game: Game) {
+    this._game = game;
     this.wss = new WebSocketServer({
       port,
       perMessageDeflate,
@@ -43,7 +50,7 @@ export default class NetworkServer {
         if (ws.isAlive === false) return ws.terminate();
 
         ws.isAlive = false;
-        this.sendMessage(ws, "ping");
+        ws.send("ping");
       });
     }, 30000);
   }
@@ -51,23 +58,28 @@ export default class NetworkServer {
   onConnection(ws, req) {
     ws.isAlive = true;
     // ws.on("pong", heartbeat);
-    this.sendMessage(ws, "ping");
-
+    ws.send("ping");
     const ip =
       (req.headers["x-forwarded-for"] as String)?.split(",")[0].trim() ??
       req.socket.remoteAddress;
-    this.sendMessage(ws, "getKnownUsersSharingIp", this.knownUsers[ip]);
-    ws.on("message", (message) => {
-      console.log("received: %s", message);
+    //this.sendMessage(ws, "getKnownUsersSharingIp", this.knownUsers[ip]);
+    ws.on("message", (message: any) => {
       if (message == "pong") {
         heartbeat.bind(ws)();
+        return;
       }
+      const parsedMessage = JSON.parse(message.toString());
+      if (parsedMessage.order) {
+        // console.log(parsedMessage.order);
+        // console.log(this._game[parsedMessage.order]);
+        let answer = this._game[parsedMessage.order](ws, parsedMessage.data);
+        // console.log(JSON.stringify({ ...parsedMessage, data: answer }));
+        ws.send(JSON.stringify({ ...parsedMessage, data: answer }));
+      }
+      console.log(parsedMessage);
     });
   }
   onClose() {
     clearInterval(this.interval);
-  }
-  sendMessage(ws: WebSocket, order: String, data: any = null) {
-    ws.send(JSON.stringify({ order, data, id: this.messageId++ }));
   }
 }
