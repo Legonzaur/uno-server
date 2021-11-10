@@ -37,6 +37,7 @@ export default class NetworkServer {
   interval: NodeJS.Timer;
   constructor(port: number = 8081, game: Game) {
     this._game = game;
+    this._game.notifyAllPlayers = this.broadcast.bind(this);
     this.wss = new WebSocketServer({
       port,
       perMessageDeflate,
@@ -70,16 +71,44 @@ export default class NetworkServer {
       }
       const parsedMessage = JSON.parse(message.toString());
       if (parsedMessage.order) {
-        // console.log(parsedMessage.order);
-        // console.log(this._game[parsedMessage.order]);
-        let answer = this._game[parsedMessage.order](ws, parsedMessage.data);
-        // console.log(JSON.stringify({ ...parsedMessage, data: answer }));
-        ws.send(JSON.stringify({ ...parsedMessage, data: answer }));
+        if (parsedMessage.order == "login") {
+          let player = this._game.login(parsedMessage.data);
+          if (player) {
+            player.sendMessage = ws.send;
+            ws.player = player;
+            ws.send(JSON.stringify({ ...parsedMessage, data: true }));
+          } else {
+            ws.send(JSON.stringify({ ...parsedMessage, data: false }));
+          }
+          return;
+        }
+        if (
+          parsedMessage.order == "getLoggedUsers" ||
+          parsedMessage.order == "getGameStatus"
+        ) {
+          let answer = this._game[parsedMessage.order](parsedMessage.data);
+          ws.send(JSON.stringify({ ...parsedMessage, data: answer }));
+        }
       }
       console.log(parsedMessage);
+    });
+    ws.on("close", () => {
+      this._game.removePlayer(ws.player);
+      delete ws.player;
+      this._game.notifyAllPlayers({
+        order: "updateLoggedUsers",
+        data: this._game.getLoggedUsers(),
+      });
     });
   }
   onClose() {
     clearInterval(this.interval);
+  }
+  broadcast(message: any) {
+    this.wss.clients.forEach(function each(client) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(message));
+      }
+    });
   }
 }

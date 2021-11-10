@@ -9,25 +9,33 @@ export enum GameStatus {
 export default class Game {
   currentPlayers: Player[] = [];
   gameStatus: GameStatus = 0;
+  notifyAllPlayers: (message: any) => void;
   constructor() {}
-  getLoggedUsers(ws: any) {
-    console.log(this.currentPlayers);
-    console.log(this);
+  removePlayer(player: Player) {
+    this.currentPlayers.splice(this.currentPlayers.indexOf(player), 1);
+  }
+  getLoggedUsers() {
     return this.currentPlayers.map((e) => e.username);
   }
-  getGameStatus(ws: any) {
+  getGameStatus() {
     return this.gameStatus;
   }
-  login(ws: any, username: string) {
+  updateLoggedUsers() {
+    this.notifyAllPlayers({
+      order: "updateLoggedUsers",
+      data: this.getLoggedUsers(),
+    });
+  }
+  login(username: string) {
     if (
       this.currentPlayers.map((e) => e.username).indexOf(username) > -1 ||
       username.length < 1
     ) {
-      return false;
+      return null;
     }
     let newPlayer = new Player(username);
     this.currentPlayers.push(newPlayer);
-    ws.player = newPlayer;
-    return true;
+    this.updateLoggedUsers();
+    return newPlayer;
   }
 }
