@@ -74,7 +74,9 @@ export default class NetworkServer {
         if (parsedMessage.order == "login") {
           let player = this._game.login(parsedMessage.data);
           if (player) {
-            player.sendMessage = ws.send;
+            player.sendMessage = (message) => {
+              ws.send(JSON.stringify(message));
+            };
             ws.player = player;
             ws.send(JSON.stringify({ ...parsedMessage, data: true }));
           } else {
@@ -88,9 +90,13 @@ export default class NetworkServer {
         ) {
           let answer = this._game[parsedMessage.order](parsedMessage.data);
           ws.send(JSON.stringify({ ...parsedMessage, data: answer }));
+          return;
+        }
+        if (ws.player) {
+          let answer = ws.player[parsedMessage.order](parsedMessage.data);
+          ws.send(JSON.stringify({ ...parsedMessage, data: answer }));
         }
       }
-      console.log(parsedMessage);
     });
     ws.on("close", () => {
       this._game.removePlayer(ws.player);
